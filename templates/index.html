@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h4>Student List</h4>
+
+<form method="GET" class="d-flex mb-3">
+    <input type="text" name="search" class="form-control me-2" placeholder="Search by name">
+    <button class="btn btn-outline-primary">Search</button>
+</form>
+
+<table class="table table-bordered table-striped">
+    <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Age</th>
+        <th>Course</th>
+        <th>Actions</th>
+    </tr>
+    {% for student in students %}
+    <tr>
+        <td>{{student[0]}}</td>
+        <td>{{student[1]}}</td>
+        <td>{{student[2]}}</td>
+        <td>{{student[3]}}</td>
+        <td>
+            <a href="/edit/{{student[0]}}" class="btn btn-sm btn-info">Edit</a>
+            <a href="/delete/{{student[0]}}" class="btn btn-sm btn-danger"
+               onclick="return confirm('Delete this student?')">Delete</a>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}
