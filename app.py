@@ -1,30 +1,28 @@
 import os
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
 
 app = Flask(__name__)
-
-# Secret key
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 
-# Database configuration (Render + Local compatible)
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-    "DATABASE_URL",
-    "sqlite:///database.db"
-)
+# Database Fix
+database_url = os.environ.get("DATABASE_URL")
 
+if database_url:
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = database_url or "sqlite:///database.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
-# ---------------- LOGIN MANAGER ---------------- #
+# ---------------- LOGIN ---------------- #
 
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
-
-# ---------------- USER CLASS ---------------- #
 
 class User(UserMixin):
     id = 1
@@ -33,17 +31,19 @@ class User(UserMixin):
 def load_user(user_id):
     return User()
 
-# ---------------- STUDENT MODEL ---------------- #
+# ---------------- MODEL ---------------- #
 
 class Student(db.Model):
+    __tablename__ = "student"   # 🔥 important
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), nullable=False)
     course = db.Column(db.String(100), nullable=False)
     marks = db.Column(db.Integer, nullable=False)
 
-# 🔥 IMPORTANT: Create DB for production (Gunicorn fix)
-with app.app_context():
+# 🔥 FORCE CREATE TABLES (Production Safe)
+@app.before_first_request
+def create_tables():
     db.create_all()
 
 # ---------------- ROUTES ---------------- #
@@ -70,8 +70,7 @@ def login():
         password = request.form.get("password")
 
         if username == "admin" and password == "admin":
-            user = User()
-            login_user(user)
+            login_user(User())
             return redirect(url_for("dashboard"))
         else:
             flash("Invalid Credentials", "danger")
@@ -81,14 +80,15 @@ def login():
 @app.route("/logout")
 @login_required
 def logout():
+    from flask_login import logout_user
     logout_user()
     return redirect(url_for("login"))
 
 @app.route("/students")
 @login_required
 def students():
-    all_students = Student.query.all()
-    return render_template("students.html", students=all_students)
+    students = Student.query.all()
+    return render_template("students.html", students=students)
 
 @app.route("/add", methods=["GET", "POST"])
 @login_required
@@ -116,7 +116,6 @@ def edit_student(id):
         student.email = request.form.get("email")
         student.course = request.form.get("course")
         student.marks = int(request.form.get("marks"))
-
         db.session.commit()
         return redirect(url_for("students"))
 
@@ -129,8 +128,6 @@ def delete_student(id):
     db.session.delete(student)
     db.session.commit()
     return redirect(url_for("students"))
-
-# ---------------- RUN LOCAL ---------------- #
 
 if __name__ == "__main__":
     app.run(debug=True)
