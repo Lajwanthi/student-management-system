@@ -1,21 +1,30 @@
+import os
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
 
-import os
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///database.db")
+# Secret key
+app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
+
+# Database configuration (Render + Local compatible)
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
+    "DATABASE_URL",
+    "sqlite:///database.db"
+)
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
+
+# ---------------- LOGIN MANAGER ---------------- #
 
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-# ---------------- USER ---------------- #
+# ---------------- USER CLASS ---------------- #
 
 class User(UserMixin):
     id = 1
@@ -24,7 +33,7 @@ class User(UserMixin):
 def load_user(user_id):
     return User()
 
-# ---------------- MODEL ---------------- #
+# ---------------- STUDENT MODEL ---------------- #
 
 class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -32,6 +41,10 @@ class Student(db.Model):
     email = db.Column(db.String(120), nullable=False)
     course = db.Column(db.String(100), nullable=False)
     marks = db.Column(db.Integer, nullable=False)
+
+# 🔥 IMPORTANT: Create DB for production (Gunicorn fix)
+with app.app_context():
+    db.create_all()
 
 # ---------------- ROUTES ---------------- #
 
@@ -53,8 +66,8 @@ def dashboard():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form["username"]
-        password = request.form["password"]
+        username = request.form.get("username")
+        password = request.form.get("password")
 
         if username == "admin" and password == "admin":
             user = User()
@@ -82,10 +95,10 @@ def students():
 def add_student():
     if request.method == "POST":
         new_student = Student(
-            name=request.form["name"],
-            email=request.form["email"],
-            course=request.form["course"],
-            marks=request.form["marks"]
+            name=request.form.get("name"),
+            email=request.form.get("email"),
+            course=request.form.get("course"),
+            marks=int(request.form.get("marks"))
         )
         db.session.add(new_student)
         db.session.commit()
@@ -99,10 +112,10 @@ def edit_student(id):
     student = Student.query.get_or_404(id)
 
     if request.method == "POST":
-        student.name = request.form["name"]
-        student.email = request.form["email"]
-        student.course = request.form["course"]
-        student.marks = request.form["marks"]
+        student.name = request.form.get("name")
+        student.email = request.form.get("email")
+        student.course = request.form.get("course")
+        student.marks = int(request.form.get("marks"))
 
         db.session.commit()
         return redirect(url_for("students"))
@@ -117,9 +130,7 @@ def delete_student(id):
     db.session.commit()
     return redirect(url_for("students"))
 
-# ---------------- MAIN ---------------- #
+# ---------------- RUN LOCAL ---------------- #
 
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
     app.run(debug=True)
