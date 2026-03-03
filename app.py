@@ -1,133 +1,146 @@
-import os
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, session, flash
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
+app.secret_key = "supersecretkey"
 
-# Database Fix
-database_url = os.environ.get("DATABASE_URL")
-
-if database_url:
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-
-app.config["SQLALCHEMY_DATABASE_URI"] = database_url or "sqlite:///database.db"
+# SQLite (temporary on Vercel)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///students.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
-# ---------------- LOGIN ---------------- #
+# ------------------ MODELS ------------------
 
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = "login"
-
-class User(UserMixin):
-    id = 1
-
-@login_manager.user_loader
-def load_user(user_id):
-    return User()
-
-# ---------------- MODEL ---------------- #
+class Admin(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(100), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
 
 class Student(db.Model):
-    __tablename__ = "student"   # 🔥 important
     id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.String(20), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120), nullable=False)
     course = db.Column(db.String(100), nullable=False)
     marks = db.Column(db.Integer, nullable=False)
 
-# 🔥 FORCE CREATE TABLES (Production Safe)
-@app.before_first_request
-def create_tables():
+# ------------------ CREATE TABLES ------------------
+
+with app.app_context():
     db.create_all()
 
-# ---------------- ROUTES ---------------- #
+    # Create default admin if not exists
+    if not Admin.query.filter_by(username="admin").first():
+        hashed_password = generate_password_hash("admin")
+        admin = Admin(username="admin", password=hashed_password)
+        db.session.add(admin)
+        db.session.commit()
 
-@app.route("/")
-@login_required
-def dashboard():
-    students = Student.query.all()
-    total_students = len(students)
-    avg_marks = db.session.query(db.func.avg(Student.marks)).scalar()
-    top_student = Student.query.order_by(Student.marks.desc()).first()
+# ------------------ LOGIN ------------------
 
-    return render_template(
-        "dashboard.html",
-        total_students=total_students,
-        avg_marks=avg_marks,
-        top_student=top_student
-    )
-
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
+        username = request.form["username"]
+        password = request.form["password"]
 
-        if username == "admin" and password == "admin":
-            login_user(User())
-            return redirect(url_for("dashboard"))
+        admin = Admin.query.filter_by(username=username).first()
+
+        if admin and check_password_hash(admin.password, password):
+            session["admin"] = True
+            return redirect("/dashboard")
         else:
             flash("Invalid Credentials", "danger")
 
     return render_template("login.html")
 
-@app.route("/logout")
-@login_required
-def logout():
-    from flask_login import logout_user
-    logout_user()
-    return redirect(url_for("login"))
+# ------------------ DASHBOARD ------------------
 
-@app.route("/students")
-@login_required
-def students():
+@app.route("/dashboard")
+def dashboard():
+    if "admin" not in session:
+        return redirect("/")
+
     students = Student.query.all()
-    return render_template("students.html", students=students)
+
+    total_students = Student.query.count()
+    average_marks = db.session.query(db.func.avg(Student.marks)).scalar() or 0
+    top_student = Student.query.order_by(Student.marks.desc()).first()
+
+    return render_template(
+        "dashboard.html",
+        students=students,
+        total_students=total_students,
+        average_marks=round(average_marks, 2),
+        top_student=top_student
+    )
+
+# ------------------ ADD STUDENT ------------------
 
 @app.route("/add", methods=["GET", "POST"])
-@login_required
 def add_student():
+    if "admin" not in session:
+        return redirect("/")
+
     if request.method == "POST":
+        marks = int(request.form["marks"])
+
+        if marks < 0 or marks > 100:
+            flash("Marks must be between 0 and 100", "danger")
+            return redirect("/add")
+
         new_student = Student(
-            name=request.form.get("name"),
-            email=request.form.get("email"),
-            course=request.form.get("course"),
-            marks=int(request.form.get("marks"))
+            student_id=request.form["student_id"],
+            name=request.form["name"],
+            course=request.form["course"],
+            marks=marks
         )
+
         db.session.add(new_student)
         db.session.commit()
-        return redirect(url_for("students"))
+        flash("Student Added Successfully", "success")
+        return redirect("/dashboard")
 
     return render_template("add_student.html")
 
+# ------------------ EDIT STUDENT ------------------
+
 @app.route("/edit/<int:id>", methods=["GET", "POST"])
-@login_required
 def edit_student(id):
+    if "admin" not in session:
+        return redirect("/")
+
     student = Student.query.get_or_404(id)
 
     if request.method == "POST":
-        student.name = request.form.get("name")
-        student.email = request.form.get("email")
-        student.course = request.form.get("course")
-        student.marks = int(request.form.get("marks"))
+        student.student_id = request.form["student_id"]
+        student.name = request.form["name"]
+        student.course = request.form["course"]
+        student.marks = int(request.form["marks"])
+
         db.session.commit()
-        return redirect(url_for("students"))
+        flash("Student Updated Successfully", "success")
+        return redirect("/dashboard")
 
     return render_template("edit_student.html", student=student)
 
+# ------------------ DELETE ------------------
+
 @app.route("/delete/<int:id>")
-@login_required
 def delete_student(id):
+    if "admin" not in session:
+        return redirect("/")
+
     student = Student.query.get_or_404(id)
     db.session.delete(student)
     db.session.commit()
-    return redirect(url_for("students"))
+    flash("Student Deleted Successfully", "warning")
+    return redirect("/dashboard")
 
-if __name__ == "__main__":
-    app.run(debug=True)
+# ------------------ LOGOUT ------------------
+
+@app.route("/logout")
+def logout():
+    session.pop("admin", None)
+    return redirect("/")

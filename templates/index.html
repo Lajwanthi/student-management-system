@@ -1,34 +1,42 @@
-{% extends "base.html" %}
-{% block content %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Management System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
 
-<h4>Student List</h4>
+<div class="container mt-5">
+    <h2 class="text-center mb-4">Student Management System</h2>
 
-<form method="GET" class="d-flex mb-3">
-    <input type="text" name="search" class="form-control me-2" placeholder="Search by name">
-    <button class="btn btn-outline-primary">Search</button>
-</form>
+    <a href="/add" class="btn btn-success mb-3">Add New Student</a>
 
-<table class="table table-bordered table-striped">
-    <tr>
-        <th>ID</th>
-        <th>Name</th>
-        <th>Age</th>
-        <th>Course</th>
-        <th>Actions</th>
-    </tr>
-    {% for student in students %}
-    <tr>
-        <td>{{student[0]}}</td>
-        <td>{{student[1]}}</td>
-        <td>{{student[2]}}</td>
-        <td>{{student[3]}}</td>
-        <td>
-            <a href="/edit/{{student[0]}}" class="btn btn-sm btn-info">Edit</a>
-            <a href="/delete/{{student[0]}}" class="btn btn-sm btn-danger"
-               onclick="return confirm('Delete this student?')">Delete</a>
-        </td>
-    </tr>
-    {% endfor %}
-</table>
+    <table class="table table-bordered table-striped">
+        <thead class="table-dark">
+            <tr>
+                <th>Student ID</th>
+                <th>Name</th>
+                <th>Course</th>
+                <th>Marks</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for student in students %}
+            <tr>
+                <td>{{ student.student_id }}</td>
+                <td>{{ student.name }}</td>
+                <td>{{ student.course }}</td>
+                <td>{{ student.marks }}</td>
+                <td>
+                    <a href="/edit/{{ student.id }}" class="btn btn-warning btn-sm">Edit</a>
+                    <a href="/delete/{{ student.id }}" class="btn btn-danger btn-sm">Delete</a>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
 
-{% endblock %}
+</body>
+</html>
